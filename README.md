@@ -253,6 +253,118 @@ $$\hat{y} = \text{mode}(y_1, y_2, \dots, y_k)$$
 
 ---
 
+## 6. Support Vector Machine (SVM)
+
+**File:** `notebooks/SVM.ipynb`
+
+### Concept
+
+SVM finds the **optimal hyperplane** that separates two classes with the **maximum margin** — the widest possible gap between the nearest points of each class (called support vectors). Instead of just finding *a* decision boundary that works, SVM finds the one that is *furthest* from both classes simultaneously, making it more robust to new data.
+
+This implementation uses **subgradient descent** (Pegasos-style) to minimize a regularized hinge loss — a scalable alternative to the exact quadratic programming (QP) solver used in sklearn's SVC.
+
+### The Math
+
+**Objective function (regularized hinge loss):**
+
+$$L(w, b) = \lambda\|w\|^2 + \frac{1}{n}\sum_{i=1}^{n}\max\left(0,\ 1 - y_i(w \cdot x_i + b)\right)$$
+
+The first term is L2 regularization (controls margin width), the second is the hinge loss (penalizes misclassified points and points inside the margin).
+
+**Subgradient update rules:**
+
+For a correctly classified point where $y_i(w \cdot x_i + b) \geq 1$ (outside the margin):
+
+$$w := w - \alpha \cdot 2\lambda w$$
+
+For a misclassified or margin-violating point where $y_i(w \cdot x_i + b) < 1$:
+
+$$w := w - \alpha \cdot (2\lambda w - y_i x_i)$$
+
+$$b := b - \alpha \cdot (-y_i)$$
+
+**Decaying learning rate (stabilizes convergence):**
+
+$$\alpha_t = \frac{\alpha_0}{1 + \lambda \cdot t}$$
+
+**Decision function (signed distance from hyperplane):**
+
+$$f(x) = w \cdot x + b \quad \Rightarrow \quad \hat{y} = \text{sign}(f(x))$$
+
+### Step-by-Step Implementation
+
+1. Convert labels to $\{-1, +1\}$ internally — SVM's hinge loss requires this label convention. **Important:** the original `y` array passed in is not mutated (it's a local reassignment inside `fit()`), so predictions come back as $\{-1, +1\}$. Compare against a converted `y_true`, not the raw `y` from `make_blobs` (which is $\{0, 1\}$) — doing so gives a false ~50% accuracy regardless of model quality.
+2. Initialize `w = zeros`, `b = 0`.
+3. For each epoch, shuffle indices (avoids cyclical bias), compute `current_lr` with decay.
+4. For each sample: check if it satisfies the margin condition. If yes → only regularize `w`. If no → update both `w` and `b` using the hinge subgradient.
+5. After each epoch, compute and store the full hinge loss via `_hinge_loss()` for plotting convergence.
+6. `predict()` returns `np.sign(X @ w + b)`.
+7. `decision_function()` returns the raw signed distance — useful for identifying approximate support vectors (points closest to the hyperplane).
+
+### Key Properties
+
+- Labels **must** be $\{-1, +1\}$, not $\{0, 1\}$ — the hinge loss formula `max(0, 1 - y*(w·x + b))` breaks silently with binary labels.
+- The pure Pegasos schedule $\alpha_t = \frac{1}{\lambda t}$ can blow up for small `lambda_param` values — the modified schedule $\frac{\alpha_0}{1 + \lambda t}$ is more stable in practice.
+- This is a **linear SVM** — for non-linearly separable data, a kernel (RBF, polynomial) would be needed, which requires the dual formulation.
+- Subgradient descent gives approximate support vectors, not exact ones (unlike QP). Points within ~15th percentile of `|decision_function|` are used as proxies.
+
+---
+
+## 7. Bagging Classifier (Bootstrap Aggregating)
+
+**File:** `notebooks/BaggingClassifier.ipynb`
+
+### Concept
+
+Bagging (Bootstrap Aggregating) is an **ensemble method** that reduces variance by training multiple independent models on different random subsets of the training data, then combining their predictions via **majority vote**.
+
+The key insight: individual decision trees have high variance — they overfit to whatever training data they see. If you train many trees on slightly different versions of the data (bootstrap resamples) and average their opinions, the variance cancels out while the bias stays roughly the same.
+
+### The Math
+
+**Bootstrap resampling** — for a dataset of $n$ samples, draw $n$ samples *with replacement*:
+
+$$D_i = \{(x_j, y_j) \mid j \sim \text{Uniform}\{1, \ldots, n\}, \text{ with replacement}\}$$
+
+On average, each bootstrap sample contains ~63.2% of unique original samples — the remaining ~36.8% are the **Out-of-Bag (OOB)** samples for that tree.
+
+**Final prediction (majority vote):**
+
+$$\hat{y} = \text{mode}\left(\hat{y}_1(x),\ \hat{y}_2(x),\ \ldots,\ \hat{y}_T(x)\right)$$
+
+**OOB Score** (free internal validation, no separate test set needed):
+
+$$\text{OOB Score} = \frac{1}{n}\sum_{i=1}^{n} \mathbf{1}\left[\hat{y}_{\text{oob},i} = y_i\right]$$
+
+where $\hat{y}_{\text{oob},i}$ is the majority vote from only the trees that did **not** see sample $i$ in their bootstrap resample.
+
+### Step-by-Step Implementation
+
+1. For each of `n_estimators` trees:
+   - Draw a bootstrap resample of size $n$ with replacement using `rng.choice(..., replace=True)`.
+   - Track which original indices were **not** selected → OOB mask for this tree.
+   - Train a `DecisionTreeClassifier` on the resampled data.
+   - For all OOB indices, collect this tree's predictions into a running vote list.
+2. After all trees are trained, for each sample: take the majority vote across all trees that had it as OOB → compute OOB accuracy (`oob_score_`).
+3. `predict()` collects predictions from all trees, transposes the array (shape: `[n_estimators, n_samples]` → `[n_samples, n_estimators]`), then returns the majority class per sample using `Counter`.
+4. `predict_proba()` returns the fraction of trees voting for each class per sample — a soft probability estimate.
+
+### Key Properties
+
+- Each tree is trained **independently** and in **full depth** (or up to `max_depth`) — unlike Random Forest, Bagging uses the full feature set at every split (no feature subsampling per split).
+- OOB score is a nearly unbiased estimate of generalization error — comparable to cross-validation but computed for free during training, without a separate validation set.
+- Bagging reduces **variance**, not **bias** — it won't fix an underfitting model, only an overfitting one.
+- The difference from **Random Forest**: Random Forest adds feature subsampling at each split on top of bootstrap sampling, which further decorrelates the trees and usually gives better performance.
+
+| | Bagging | Random Forest |
+|---|---|---|
+| Bootstrap sampling | ✅ | ✅ |
+| Feature subsampling per split | ❌ | ✅ (`sqrt(n_features)`) |
+| Tree correlation | Higher | Lower |
+| Typical performance | Good | Better |
+
+---
+
 ## Repository Structure
 
 ```
