@@ -29,6 +29,8 @@ Most tutorials teach you to call `model.fit(X, y)` from a library. This repo goe
 | 3 | Logistic Regression | Classification | Gradient Descent |
 | 4 | KNN Regressor | Regression | Distance-based, Lazy Learning |
 | 5 | KNN Classifier | Classification | Distance-based, Lazy Learning |
+| 6 | SVM | Classification | Subgradient Descent (Pegasos-style) |
+| 7 | Bagging Classifier | Classification | Bootstrap Aggregating + Majority Vote |
 
 ---
 
@@ -376,7 +378,9 @@ ml-algorithms-from-scratch/
     ├── LinearRegressionGD.ipynb
     ├── LogisticRegression.ipynb
     ├── KNNRegressor.ipynb
-    └── KNNClassifier.ipynb
+    ├── KNNClassifier.ipynb
+    ├── SVM.ipynb
+    └── BaggingClassifier.ipynb
 ```
 
 ## Tech Stack
@@ -386,28 +390,18 @@ ml-algorithms-from-scratch/
 - **scikit-learn** — used *only* for `StandardScaler` (feature scaling), not for any model
 - **Matplotlib** — visualizing predictions and loss curves
 
-## How to Run
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/codewithvikas96-ui/ml-algorithms-from-scratch.git
-   cd ml-algorithms-from-scratch
-   ```
-2. Install dependencies:
-   ```bash
-   pip install numpy scikit-learn matplotlib jupyter
-   ```
-3. Launch Jupyter and open any notebook inside `notebooks/`:
-   ```bash
-   jupyter notebook
-   ```
+--- 
 
 ## Key Takeaways from This Project
 
 - **OLS vs. GD**: OLS gives an exact solution instantly for small datasets but doesn't scale; GD scales to large datasets but needs tuning (`learning_rate`, `epochs`) and feature scaling.
 - **Linear vs. Logistic Regression**: The gradient formulas for both look almost identical — the only real difference is that Logistic Regression passes its linear output through a sigmoid function and uses Cross-Entropy loss instead of MSE.
 - **KNN's tradeoff**: No training cost, but expensive predictions, and heavily reliant on proper feature scaling since it's purely distance-based.
-- Implementing these from scratch makes the role of the **cost function**, **gradient**, and **learning rate** click in a way that just calling `model.fit()` never does.
+- **SVM's margin intuition**: Unlike Logistic Regression which just finds *a* boundary that separates classes, SVM finds the boundary with *maximum margin* — making it more robust. The hinge loss only penalizes points that are misclassified or inside the margin, completely ignoring points already on the correct side.
+- **Bagging vs. a single tree**: A single decision tree overfits because it memorizes the training data. Bagging forces each tree to see a slightly different version of the data (bootstrap resample), so their errors don't all point in the same direction — the majority vote cancels out individual mistakes and reduces variance without touching bias.
+- **Bagging vs. Random Forest**: Bagging uses the full feature set at every split; Random Forest additionally subsamples features per split, further decorrelating the trees. That one extra step is what usually makes Random Forest outperform plain Bagging.
+- Implementing these from scratch makes the role of the **cost function**, **gradient**, and **learning rate** click in a way that just calling `model.fit()` never does. And implementing ensemble methods from scratch shows *why* combining weak learners works — it's not magic, it's variance reduction through averaging.
+
 
 ## Author
 
